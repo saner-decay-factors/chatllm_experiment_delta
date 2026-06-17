@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 
 from backend.config import OPENROUTER_MODEL_DEFAULT
 from backend.database import get_db
-from backend.models import ChatMessage, ChatSession
+from backend.models import ChatMessage, ChatSession, User
 from backend.schemas.chat import ChatRequest, ChatResponse
+from backend.services.auth import get_current_user
 from backend.services.openrouter import OpenRouterConfigError, generate_reply, stream_reply
 from backend.routers.sessions import _generate_title
 
@@ -27,14 +28,17 @@ def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
-def _resolve_session(payload: ChatRequest, db: Session) -> tuple[ChatSession, str]:
-    """Resolve or create a session, return (session, session_key_str)."""
+def _resolve_session(payload: ChatRequest, user_id: int, db: Session) -> tuple[ChatSession, str]:
+    """Resolve or create a session for the given user, return (session, session_key_str)."""
     if payload.session_id:
-        session = db.query(ChatSession).filter(ChatSession.id == payload.session_id).first()
+        session = db.query(ChatSession).filter(
+            ChatSession.id == payload.session_id,
+            ChatSession.user_id == user_id,
+        ).first()
         if not session:
             raise HTTPException(status_code=404, detail="Sessão não encontrada")
     else:
-        session = ChatSession(title="Nova conversa")
+        session = ChatSession(user_id=user_id, title="Nova conversa")
         db.add(session)
         db.commit()
         db.refresh(session)
@@ -44,7 +48,11 @@ def _resolve_session(payload: ChatRequest, db: Session) -> tuple[ChatSession, st
 
 
 @router.post("/api/chat", response_model=ChatResponse)
-async def chat(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
+async def chat(
+    payload: ChatRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> ChatResponse:
     try:
         reply, model_name = await generate_reply(
             user_message=payload.message,
@@ -57,7 +65,7 @@ async def chat(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatRespo
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     resolved_model = payload.model or model_name or OPENROUTER_MODEL_DEFAULT
-    session, session_key = _resolve_session(payload, db)
+    session, session_key = _resolve_session(payload, current_user.id, db)
 
     db.add(ChatMessage(session_key=session_key, role="user", content=payload.message, model=resolved_model))
     db.add(ChatMessage(session_key=session_key, role="assistant", content=reply, model=resolved_model))
@@ -73,7 +81,11 @@ async def chat(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatRespo
 
 
 @router.post("/api/chat/stream")
-async def chat_stream(payload: ChatRequest, db: Session = Depends(get_db)) -> StreamingResponse:
+async def chat_stream(
+    payload: ChatRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> StreamingResponse:
     resolved_model = payload.model or OPENROUTER_MODEL_DEFAULT
 
     async def event_generator():
@@ -94,7 +106,7 @@ async def chat_stream(payload: ChatRequest, db: Session = Depends(get_db)) -> St
             return
 
         if full_reply.strip():
-            session, session_key = _resolve_session(payload, db)
+            session, session_key = _resolve_session(payload, current_user.id, db)
             db.add(
                 ChatMessage(
                     session_key=session_key,

@@ -1,9 +1,74 @@
 const API_BASE = window.location.origin;
 
+/* ---------- Token ---------- */
+
+function getToken() {
+  return localStorage.getItem("chatllm_token");
+}
+
+function setToken(token) {
+  localStorage.setItem("chatllm_token", token);
+}
+
+function clearToken() {
+  localStorage.removeItem("chatllm_token");
+}
+
+function authHeaders() {
+  const token = getToken();
+  return token ? { "Authorization": `Bearer ${token}` } : {};
+}
+
+/* ---------- Auth API ---------- */
+
+async function registerUser(email, password) {
+  const res = await fetch(`${API_BASE}/api/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    const msg = Array.isArray(data.detail) ? data.detail[0]?.msg || "Erro de validação" : data.detail || "Erro ao cadastrar";
+    throw new Error(msg);
+  }
+  setToken(data.access_token);
+  return data;
+}
+
+async function loginUser(email, password) {
+  const res = await fetch(`${API_BASE}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    const msg = Array.isArray(data.detail) ? data.detail[0]?.msg || "Erro de validação" : data.detail || "Erro ao entrar";
+    throw new Error(msg);
+  }
+  setToken(data.access_token);
+  return data;
+}
+
+async function fetchMe() {
+  const res = await fetch(`${API_BASE}/api/auth/me`, {
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+function logoutUser() {
+  clearToken();
+}
+
 /* ---------- Sessions API ---------- */
 
 async function listSessions() {
-  const res = await fetch(`${API_BASE}/api/sessions`);
+  const res = await fetch(`${API_BASE}/api/sessions`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) throw new Error("Erro ao listar sessoes");
   const data = await res.json();
   return data.sessions;
@@ -12,7 +77,7 @@ async function listSessions() {
 async function createSession() {
   const res = await fetch(`${API_BASE}/api/sessions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify({}),
   });
   if (!res.ok) throw new Error("Erro ao criar sessao");
@@ -22,12 +87,15 @@ async function createSession() {
 async function deleteSession(sessionId) {
   const res = await fetch(`${API_BASE}/api/sessions/${sessionId}`, {
     method: "DELETE",
+    headers: authHeaders(),
   });
   if (!res.ok) throw new Error("Erro ao excluir sessao");
 }
 
 async function getSessionMessages(sessionId) {
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/messages`);
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/messages`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) throw new Error("Erro ao carregar mensagens da sessao");
   return res.json();
 }
@@ -40,7 +108,7 @@ async function sendMessageStream({ message, history, sessionId, onDelta, signal 
 
   const response = await fetch(`${API_BASE}/api/chat/stream`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify(body),
     signal,
   });

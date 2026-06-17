@@ -5,25 +5,25 @@
 **Hard rule**: AI agents must not edit this file and must not draft paste-ready content for it.
 
 ## R — Repeat (The Problem)
-_State the problem in your own words. Confirm that you share the same mental model of the goal._
+O objetivo era adicionar um sistema de login à aplicação permitindo ao usuário criar uma conta e acessá-la através de seu email e senha
 
 ## E — Examples
 _Provide concrete inputs and expected outputs that demonstrate the correctness. Base them on observable behavior._
 
-- **Happy Path Input**: ...
-  **Output**: ...
+- **Happy Path Input**: Usuário pede para criar uma conta
+  **Output**: Encaminhamento para tela de criação de conta    
 
-- **Edge Case Input**: ...
-  **Output**: ...
+- **Edge Case Input**: Usuário tenta criar conta com email já existente
+  **Output**: Erro de conflito com o banco de dados
 
 ## A — Approach
-_Describe your high-level strategy conceptually. How did you design the solution?_
+O sistema importou bibliotecas de encriptação segredos e autenticação. As senhas foram criadas usando encriptação e armazenadas no banco junto aos respectivos emails para cada usuário. Quando um usuário tenta entrar na conta o sistema checa se esse usuário existe no banco. O login gera um token que permite acesso ao chat. Ao sair essas informações são resetadas e o usuário retorna à tela de autenticação.
 
 ## C — Code
-_Identify the most critical code changes, format as actual files, functions, or methods. Justify the intent of your design choices rather than just acknowledging the syntax changes._
+Foi criada uma classe de usuário e schemas para lidar com o login e autenticação. Foram alterados os arquivos backend/routers/chat.py` e backend/routers/sessions.py` para que houvesse a autenticação do usuário criado. Foi criado o servição de auth.py para gerenciar os tokens de acesso de cada sessão.
 
 ## T — Tests
-_Explain how the solution was validated, pointing to the actual test files, functions, or methods. Document any manual or automated tests._
+foram gerados 43 testes cobrindo health, root, chat (protegido), stream (protegido), CORS, models, schemas, openrouter. Além da autenticação dos tokens (auth)
 
 ## O — Optimize
-_Address Big(O) complexity, note that sometimes it doesn't apply, trade-offs, constraints, and opportunities for future improvement._
+O(n)

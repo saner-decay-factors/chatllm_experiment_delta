@@ -5,6 +5,7 @@ function createMessageId() {
 }
 
 function App() {
+  const [user, setUser] = useState(null); // null = loading, false = not logged in, object = logged in
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -15,8 +16,29 @@ function App() {
   const messagesRef = useRef(null);
   const abortControllerRef = useRef(null);
 
-  // Load sessions on mount
+  // Check auth on mount
   useEffect(() => {
+    const token = getToken();
+    if (!token) {
+      setUser(false);
+      return;
+    }
+    fetchMe().then((userData) => {
+      if (userData) {
+        setUser(userData);
+      } else {
+        clearToken();
+        setUser(false);
+      }
+    }).catch(() => {
+      clearToken();
+      setUser(false);
+    });
+  }, []);
+
+  // Load sessions once authenticated
+  useEffect(() => {
+    if (!user) return;
     listSessions().then((sessionList) => {
       setSessions(sessionList);
       if (sessionList.length > 0) {
@@ -24,7 +46,7 @@ function App() {
         loadSessionMessages(sessionList[0].id);
       }
     }).catch(() => {});
-  }, []);
+  }, [user]);
 
   const loadSessionMessages = useCallback(async (sessionId) => {
     try {
@@ -36,7 +58,7 @@ function App() {
           content: "Bem-vindo ao ChatLLM Lab. Como posso ajudar voce hoje?",
         }]);
       } else {
-        setMessages(msgs.map((m) => ({ id: m.id, role: m.role, content: m.content })));
+        setMessages(msgs.map((m) => ({ id: `${sessionId}-${m.id}`, role: m.role, content: m.content })));
       }
     } catch {
       setMessages([{
@@ -99,6 +121,15 @@ function App() {
       setError(err.message);
     }
   }, [activeSessionId, refreshSessions, loadSessionMessages]);
+
+  const handleLogout = () => {
+    logoutUser();
+    setUser(false);
+    setSessions([]);
+    setActiveSessionId(null);
+    setMessages([]);
+    setBusy(false);
+  };
 
   const chatHistory = useMemo(
     () => messages.filter((msg) => msg.role === "user" || msg.role === "assistant"),
@@ -166,7 +197,6 @@ function App() {
         )
       );
 
-      // Refresh sessions to get updated title
       await refreshSessions();
     } catch (err) {
       const aborted = err?.name === "AbortError";
@@ -194,6 +224,21 @@ function App() {
     }
   };
 
+  // Auth guard: show login screen
+  if (user === null) {
+    return (
+      <main className="app-shell">
+        <div className="loading-screen">Carregando...</div>
+      </main>
+    );
+  }
+
+  if (user === false) {
+    return <LoginScreen onAuthSuccess={() => {
+      fetchMe().then(setUser);
+    }} />;
+  }
+
   return (
     <div className="app-layout">
       <Sidebar
@@ -217,7 +262,17 @@ function App() {
             </button>
           </div>
           <div className="brand">ChatLLM Lab</div>
-          <div className="header-right" />
+          <div className="header-right">
+            <button className="logout-btn" onClick={handleLogout} title="Sair">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <line x1="6" y1="2" x2="6" y2="8" />
+                <line x1="10" y1="4" x2="10" y2="14" />
+                <line x1="2" y1="8" x2="10" y2="8" />
+                <polyline points="8,6 10,8 8,10" />
+              </svg>
+              Sair
+            </button>
+          </div>
         </header>
 
         <section className="messages" aria-live="polite" ref={messagesRef}>
