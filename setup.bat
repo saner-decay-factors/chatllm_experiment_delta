@@ -34,7 +34,6 @@ if errorlevel 1 exit /b 1
 if not exist ".env" (  
     echo Copie o arquivo .env enviado por e-mail para a raiz do projeto    
   )
-)
 
 if /I "%~1"=="run" (
   ".venv\Scripts\python.exe" -m uvicorn backend.main:app --reload
