@@ -36,6 +36,11 @@ class TestChatRequest:
         assert req.message == "Hello"
         assert req.model is None
         assert req.history == []
+        assert req.session_id is None
+
+    def test_valid_request_with_session_id(self):
+        req = ChatRequest(message="Hi", session_id=42)
+        assert req.session_id == 42
 
     def test_valid_request_with_model(self):
         req = ChatRequest(message="Hi", model="openai/gpt-4o")

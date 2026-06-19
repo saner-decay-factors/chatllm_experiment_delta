@@ -1,10 +1,49 @@
 const API_BASE = window.location.origin;
 
-async function sendMessageStream({ message, history, onDelta, signal }) {
+/* ───── Session management ───── */
+
+async function apiFetch(path, options = {}) {
+  const response = await fetch(`${API_BASE}${path}`, {
+    headers: { "Content-Type": "application/json" },
+    ...options,
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.detail || `Erro ${response.status}`);
+  }
+  return response.json();
+}
+
+function listSessions() {
+  return apiFetch("/api/sessions");
+}
+
+function createSession() {
+  return apiFetch("/api/sessions", { method: "POST" });
+}
+
+function getSession(sessionId) {
+  return apiFetch(`/api/sessions/${sessionId}`);
+}
+
+function updateSessionTitle(sessionId, title) {
+  return apiFetch(`/api/sessions/${sessionId}/title`, {
+    method: "PUT",
+    body: JSON.stringify({ title }),
+  });
+}
+
+function deleteSession(sessionId) {
+  return apiFetch(`/api/sessions/${sessionId}`, { method: "DELETE" });
+}
+
+/* ───── Chat streaming ───── */
+
+async function sendMessageStream({ message, history, sessionId, signal, onDelta }) {
   const response = await fetch(`${API_BASE}/api/chat/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, history }),
+    body: JSON.stringify({ message, history, session_id: sessionId }),
     signal,
   });
 
@@ -21,6 +60,8 @@ async function sendMessageStream({ message, history, onDelta, signal }) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder("utf-8");
   let buffer = "";
+  let finalSessionId = sessionId;
+  let finalSessionTitle = null;
 
   while (true) {
     const { value, done } = await reader.read();
@@ -53,6 +94,13 @@ async function sendMessageStream({ message, history, onDelta, signal }) {
       if (payload.delta) {
         onDelta(payload.delta);
       }
+
+      if (payload.done) {
+        finalSessionId = payload.session_id;
+        finalSessionTitle = payload.session_title;
+      }
     }
   }
+
+  return { sessionId: finalSessionId, sessionTitle: finalSessionTitle };
 }

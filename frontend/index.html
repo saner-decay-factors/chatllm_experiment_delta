@@ -260,6 +260,200 @@
         .bubble.user { max-width: 90%; }
         .messages { padding: 20px 12px 12px; }
         .composer-wrap { padding: 8px 12px 16px; }
+      }
+
+      /* ───── Sidebar ───── */
+
+      .app-layout {
+        width: 100%;
+        height: 100%;
+        display: flex;
+      }
+
+      .sidebar {
+        width: 0;
+        flex-shrink: 0;
+        background: #f7f7f8;
+        border-right: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        transition: width 200ms ease;
+      }
+
+      .sidebar--open {
+        width: 280px;
+      }
+
+      .sidebar-header {
+        flex-shrink: 0;
+        padding: 12px;
+      }
+
+      .sidebar-new-btn {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        padding: 10px 14px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: transparent;
+        color: var(--text);
+        font-size: 0.875rem;
+        cursor: pointer;
+        transition: background 120ms ease;
+      }
+
+      .sidebar-new-btn:hover {
+        background: #eaeaea;
+      }
+
+      .sidebar-list {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 0 8px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .sidebar-item {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: background 120ms ease;
+        position: relative;
+      }
+
+      .sidebar-item:hover {
+        background: #eaeaea;
+      }
+
+      .sidebar-item--active {
+        background: #e3e3e3;
+      }
+
+      .sidebar-item-title {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--text);
+      }
+
+      .sidebar-item-text {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 0.875rem;
+        line-height: 1.3;
+      }
+
+      .sidebar-item-delete {
+        flex-shrink: 0;
+        width: 24px;
+        height: 24px;
+        border: none;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 120ms ease, background 120ms ease;
+      }
+
+      .sidebar-item:hover .sidebar-item-delete {
+        opacity: 1;
+      }
+
+      .sidebar-item-delete:hover {
+        background: #d4d4d4;
+        color: #c0392b;
+      }
+
+      .sidebar-item-confirm {
+        flex-shrink: 0;
+        display: flex;
+        gap: 2px;
+      }
+
+      .sidebar-confirm-yes,
+      .sidebar-confirm-no {
+        width: 24px;
+        height: 24px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 120ms ease;
+      }
+
+      .sidebar-confirm-yes {
+        background: #27ae60;
+        color: #fff;
+      }
+
+      .sidebar-confirm-yes:hover {
+        background: #219a52;
+      }
+
+      .sidebar-confirm-no {
+        background: #e74c3c;
+        color: #fff;
+      }
+
+      .sidebar-confirm-no:hover {
+        background: #c0392b;
+      }
+
+      /* ───── Sidebar toggle ───── */
+
+      .sidebar-toggle {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 32px;
+        height: 32px;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 120ms ease, color 120ms ease;
+      }
+
+      .sidebar-toggle:hover {
+        background: #eaeaea;
+        color: var(--text);
+      }
+
+      .app-header {
+        position: relative;
+      }
+
+      .loading-screen {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--muted);
+        font-size: 1rem;
       }    </style>
   </head>
   <body>
@@ -279,6 +473,7 @@
     <script type="text/babel" src="/frontend/src/api.js"></script>
     <script type="text/babel" src="/frontend/src/MessageContent.jsx"></script>
     <script type="text/babel" src="/frontend/src/Composer.jsx"></script>
+    <script type="text/babel" src="/frontend/src/Sidebar.jsx"></script>
     <script type="text/babel" src="/frontend/src/App.jsx"></script>
   </body>
 </html>
