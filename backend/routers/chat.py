@@ -8,8 +8,9 @@ from sqlalchemy.orm import Session
 
 from backend.config import OPENROUTER_MODEL_DEFAULT
 from backend.database import get_db
-from backend.models import ChatMessage
+from backend.models import ChatMessage, User
 from backend.models import Session as ChatSession
+from backend.routers.auth import get_current_user
 from backend.schemas.chat import ChatRequest, ChatResponse
 from backend.services.openrouter import OpenRouterConfigError, generate_reply, stream_reply
 
@@ -17,16 +18,16 @@ from backend.services.openrouter import OpenRouterConfigError, generate_reply, s
 router = APIRouter()
 
 
-def _get_or_create_session(db: Session, session_id: int | None) -> ChatSession:
-    """Return existing session or create a new one."""
+def _get_or_create_session(db: Session, session_id: int | None, user: User) -> ChatSession:
+    """Return existing session (owned by user) or create a new one."""
     if session_id is not None:
         session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
-        if session:
+        if session and session.user_id == user.id:
             return session
     # Create new session
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc).replace(tzinfo=None)
-    session = ChatSession(title="Nova conversa", created_at=now, updated_at=now)
+    session = ChatSession(title="Nova conversa", created_at=now, updated_at=now, user_id=user.id)
     db.add(session)
     db.commit()
     db.refresh(session)
@@ -65,8 +66,11 @@ def _history_from_session(session: ChatSession) -> list[dict]:
 
 
 @router.get("/api/sessions/{session_id}/messages")
-def get_session_messages(session_id: int, db: Session = Depends(get_db)):
+def get_session_messages(session_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Get all messages for a session."""
+    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+    if not session or session.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Sessao nao encontrada")
     messages = (
         db.query(ChatMessage)
         .filter(ChatMessage.session_id == session_id)
@@ -91,8 +95,8 @@ def health_check() -> dict[str, str]:
 
 
 @router.post("/api/chat", response_model=ChatResponse)
-async def chat(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
-    session = _get_or_create_session(db, payload.session_id)
+async def chat(payload: ChatRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> ChatResponse:
+    session = _get_or_create_session(db, payload.session_id, current_user)
     history = _history_from_session(session)
 
     try:
@@ -121,11 +125,11 @@ async def chat(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatRespo
 
 
 @router.post("/api/chat/stream")
-async def chat_stream(payload: ChatRequest, db: Session = Depends(get_db)) -> StreamingResponse:
+async def chat_stream(payload: ChatRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> StreamingResponse:
     resolved_model = payload.model or OPENROUTER_MODEL_DEFAULT
 
     async def event_generator():
-        session = _get_or_create_session(db, payload.session_id)
+        session = _get_or_create_session(db, payload.session_id, current_user)
         history = _history_from_session(session)
         is_first_message = session.title == "Nova conversa"
         full_reply = ""

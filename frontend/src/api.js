@@ -1,10 +1,29 @@
 const API_BASE = window.location.origin;
 
-/* ───── Session management ───── */
+/* ───── Auth ───── */
+
+function getToken() {
+  return localStorage.getItem("chatllm_token");
+}
+
+function setToken(token) {
+  localStorage.setItem("chatllm_token", token);
+}
+
+function clearToken() {
+  localStorage.removeItem("chatllm_token");
+}
+
+/* ───── API helper with optional auth ───── */
 
 async function apiFetch(path, options = {}) {
+  const token = getToken();
+  const headers = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
   const response = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
+    headers,
     ...options,
   });
   if (!response.ok) {
@@ -13,6 +32,28 @@ async function apiFetch(path, options = {}) {
   }
   return response.json();
 }
+
+/* ───── Auth endpoints ───── */
+
+function loginUser(email, password) {
+  return apiFetch("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+function registerUser(email, password) {
+  return apiFetch("/api/auth/register", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+function getMe() {
+  return apiFetch("/api/auth/me");
+}
+
+/* ───── Session management ───── */
 
 function listSessions() {
   return apiFetch("/api/sessions");
@@ -40,9 +81,15 @@ function deleteSession(sessionId) {
 /* ───── Chat streaming ───── */
 
 async function sendMessageStream({ message, history, sessionId, signal, onDelta }) {
+  const token = getToken();
+  const headers = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   const response = await fetch(`${API_BASE}/api/chat/stream`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ message, history, session_id: sessionId }),
     signal,
   });

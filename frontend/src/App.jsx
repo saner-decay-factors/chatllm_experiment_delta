@@ -11,6 +11,10 @@ const WELCOME_MESSAGE = {
 };
 
 function App() {
+  const [authenticated, setAuthenticated] = useState(false);
+  const [userEmail, setUserEmail] = useState("");
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [messages, setMessages] = useState([WELCOME_MESSAGE]);
@@ -27,6 +31,23 @@ function App() {
     [messages]
   );
 
+  /* ─── Check stored token on mount ─── */
+  useEffect(() => {
+    (async () => {
+      const token = getToken();
+      if (token) {
+        try {
+          const me = await getMe();
+          setUserEmail(me.email);
+          setAuthenticated(true);
+        } catch {
+          clearToken();
+        }
+      }
+      setCheckingAuth(false);
+    })();
+  }, []);
+
   /* ─── Scroll ao fim ─── */
   useEffect(() => {
     const el = messagesRef.current;
@@ -42,6 +63,7 @@ function App() {
 
   /* ─── Carregar sessoes ao iniciar ─── */
   useEffect(() => {
+    if (!authenticated) return;
     (async () => {
       try {
         let list = await listSessions();
@@ -59,7 +81,7 @@ function App() {
         setInitializing(false);
       }
     })();
-  }, []);
+  }, [authenticated]);
 
   /* ─── Carregar mensagens de uma sessao ─── */
   async function loadSessionMessages(sessionId) {
@@ -80,6 +102,24 @@ function App() {
       console.error("Falha ao carregar mensagens:", err);
       setMessages([WELCOME_MESSAGE]);
     }
+  }
+
+  /* ─── Login success ─── */
+  function handleLoginSuccess(token, email) {
+    setUserEmail(email);
+    setAuthenticated(true);
+  }
+
+  /* ─── Logout ─── */
+  function handleLogout() {
+    clearToken();
+    setAuthenticated(false);
+    setUserEmail("");
+    setSessions([]);
+    setActiveSessionId(null);
+    setMessages([WELCOME_MESSAGE]);
+    setInitializing(true);
+    abortControllerRef.current?.abort();
   }
 
   /* ─── Selecionar sessao ─── */
@@ -189,7 +229,6 @@ function App() {
       // Update title if generated
       if (result.sessionTitle && result.sessionTitle !== "Nova conversa") {
         updateSessionTitleInList(result.sessionId || currentSessionId, result.sessionTitle);
-        // Also refresh the sessions list to get accurate titles
         try {
           const list = await listSessions();
           setSessions(list);
@@ -236,6 +275,19 @@ function App() {
 
   const toggleSidebar = () => setSidebarOpen((prev) => !prev);
 
+  /* ─── Mostrar tela de login enquanto nao autenticado ─── */
+  if (checkingAuth) {
+    return (
+      <main className="app-shell">
+        <div className="loading-screen">Carregando...</div>
+      </main>
+    );
+  }
+
+  if (!authenticated) {
+    return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
+  }
+
   if (initializing) {
     return (
       <main className="app-shell">
@@ -252,6 +304,8 @@ function App() {
         onSelectSession={handleSelectSession}
         onNewSession={handleNewSession}
         onDeleteSession={handleDeleteSession}
+        onLogout={handleLogout}
+        userEmail={userEmail}
         sidebarOpen={sidebarOpen}
       />
 

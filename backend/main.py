@@ -9,13 +9,36 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from backend.database import Base, engine
-from backend.models import Session  # noqa: F401 — force import so table is created
+from backend.database import Base, SessionLocal, engine
+from backend.models import Session, User  # noqa: F401 — force import so table is created
+from backend.routers.auth import hash_password
 from backend.routers.chat import router as chat_router
 from backend.routers.sessions import router as sessions_router
+from backend.routers.auth import router as auth_router
+
+
+def seed_default_user():
+    """Create a default user for testing if none exists."""
+    db = SessionLocal()
+    try:
+        existing = db.query(User).filter(User.email == "admin@teste.com").first()
+        if not existing:
+            db.add(
+                User(
+                    email="admin@teste.com",
+                    hashed_password=hash_password("123456"),
+                )
+            )
+            db.commit()
+            print(">>> Default user created: admin@teste.com / 123456")
+    except Exception:
+        pass
+    finally:
+        db.close()
 
 
 Base.metadata.create_all(bind=engine)
+seed_default_user()
 
 app = FastAPI(title="ChatLLM Experiment API")
 
@@ -41,6 +64,7 @@ app.add_middleware(NoCacheMiddleware)
 
 app.include_router(chat_router)
 app.include_router(sessions_router)
+app.include_router(auth_router)
 
 NO_CACHE_HEADERS = {
     "Cache-Control": "no-cache, no-store, must-revalidate",

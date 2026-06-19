@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import pytest
 from fastapi.testclient import TestClient
+from passlib.context import CryptContext
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend.database import Base, get_db
 from backend.main import app
+from backend.models import User
+from backend.routers.auth import create_access_token
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 @pytest.fixture(scope="session")
@@ -30,11 +35,7 @@ def tables(engine):
 
 @pytest.fixture
 def db_session(engine, tables):
-    """Retorna uma sessao de banco limpa para cada teste.
-
-    Usa transacao aninhada (SAVEPOINT) para isolar cada teste.
-    Ao final do teste, o rollback desfaz todas as alteracoes.
-    """
+    """Retorna uma sessao de banco limpa para cada teste."""
     connection = engine.connect()
     transaction = connection.begin()
 
@@ -65,3 +66,28 @@ def client(db_session):
         yield test_client
 
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def test_user(db_session):
+    """Cria um usuario de teste e retorna seus dados."""
+    user = User(
+        email="teste@teste.com",
+        hashed_password=pwd_context.hash("123456"),
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
+@pytest.fixture
+def auth_token(test_user):
+    """Gera um token JWT para o usuario de teste."""
+    return create_access_token(email=test_user.email, user_id=test_user.id)
+
+
+@pytest.fixture
+def auth_headers(auth_token):
+    """Retorna headers de autenticacao para os testes."""
+    return {"Authorization": f"Bearer {auth_token}"}
