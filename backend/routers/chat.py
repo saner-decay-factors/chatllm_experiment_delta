@@ -6,9 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from backend.auth import get_current_user
 from backend.config import OPENROUTER_MODEL_DEFAULT
 from backend.database import get_db
-from backend.models import ChatMessage, Session as ChatSession
+from backend.models import ChatMessage, Session as ChatSession, User
 from backend.schemas.chat import ChatRequest, ChatResponse
 from backend.services.openrouter import OpenRouterConfigError, generate_reply, stream_reply
 
@@ -21,19 +22,22 @@ def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
-def _resolve_session(payload: ChatRequest, db: Session) -> ChatSession:
+def _resolve_session(payload: ChatRequest, db: Session, user: User | None = None) -> ChatSession:
     """Return existing session or create a new one with auto-title from the user message."""
     if payload.session_id is not None:
         session = db.query(ChatSession).filter(ChatSession.id == payload.session_id).first()
         if not session:
             raise HTTPException(status_code=404, detail="Sessao nao encontrada")
+        # Security: only the session owner can use it
+        if user is not None and session.user_id is not None and session.user_id != user.id:
+            raise HTTPException(status_code=403, detail="Esta sessao nao pertence a este usuario")
         # Set title if session is still untitled
         if not session.title:
             session.title = _auto_title(payload.message)
             db.commit()
         return session
     # Create a new session with auto-title from the user's message
-    session = ChatSession(title=_auto_title(payload.message))
+    session = ChatSession(title=_auto_title(payload.message), user_id=user.id if user else None)
     db.add(session)
     db.commit()
     db.refresh(session)
@@ -75,8 +79,12 @@ def _persist_messages(
 
 
 @router.post("/api/chat", response_model=ChatResponse)
-async def chat(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
-    session = _resolve_session(payload, db)
+async def chat(
+    payload: ChatRequest,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user),
+) -> ChatResponse:
+    session = _resolve_session(payload, db, user=current_user)
 
     try:
         reply, model_name = await generate_reply(
@@ -96,8 +104,12 @@ async def chat(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatRespo
 
 
 @router.post("/api/chat/stream")
-async def chat_stream(payload: ChatRequest, db: Session = Depends(get_db)) -> StreamingResponse:
-    session = _resolve_session(payload, db)
+async def chat_stream(
+    payload: ChatRequest,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user),
+) -> StreamingResponse:
+    session = _resolve_session(payload, db, user=current_user)
     resolved_model = payload.model or OPENROUTER_MODEL_DEFAULT
     session_id = session.id
 

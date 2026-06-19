@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from backend.database import Base, engine
+from backend.routers.auth import router as auth_router
 from backend.routers.chat import router as chat_router
 from backend.routers.session import router as session_router
 
@@ -38,6 +39,7 @@ class NoCacheMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(NoCacheMiddleware)
 
+app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(session_router)
 

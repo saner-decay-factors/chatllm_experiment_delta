@@ -11,6 +11,8 @@ const WELCOME_MESSAGE = {
 };
 
 function App() {
+  const [user, setUser] = useState(null);
+  const [screen, setScreen] = useState("auth"); // "auth" | "chat"
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [messages, setMessages] = useState([WELCOME_MESSAGE]);
@@ -19,6 +21,7 @@ function App() {
   const [error, setError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loadingSessions, setLoadingSessions] = useState(true);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const messagesRef = useRef(null);
   const abortControllerRef = useRef(null);
 
@@ -27,8 +30,25 @@ function App() {
     [messages]
   );
 
-  /* ─── Load sessions on mount ─── */
+  /* ─── Check saved session on mount ─── */
   useEffect(() => {
+    const token = getToken();
+    if (token) {
+      getMe()
+        .then((userData) => {
+          setUser(userData);
+          setScreen("chat");
+        })
+        .catch(() => {
+          localStorage.removeItem("chatllm_token");
+          localStorage.removeItem("chatllm_user");
+        });
+    }
+  }, []);
+
+  /* ─── Load sessions when entering chat ─── */
+  useEffect(() => {
+    if (screen !== "chat") return;
     (async () => {
       try {
         const data = await listSessions();
@@ -52,10 +72,28 @@ function App() {
         setLoadingSessions(false);
       }
     })();
-  }, []);
+  }, [screen]);
+
+  function handleAuthSuccess(userData) {
+    setUser(userData);
+    setScreen("chat");
+  }
+
+  async function handleLogout() {
+    try {
+      await logoutUser();
+    } catch {
+      // ignore
+    }
+    setUser(null);
+    setScreen("auth");
+    setSessions([]);
+    setActiveSessionId(null);
+    setMessages([WELCOME_MESSAGE]);
+    setShowUserMenu(false);
+  }
 
   async function loadSessions() {
-    // Only refresh the sessions list — does NOT clear messages or switch
     try {
       const data = await listSessions();
       setSessions(data);
@@ -134,13 +172,25 @@ function App() {
     return `${Math.floor(hrs / 24)}d`;
   }
 
+  function userAvatarLetter() {
+    if (!user) return "?";
+    return (user.first_name || user.email)[0].toUpperCase();
+  }
+
   useEffect(() => {
     const el = messagesRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
   useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (!e.target.closest(".user-menu-area")) {
+        setShowUserMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
     return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
       abortControllerRef.current?.abort();
     };
   }, []);
@@ -173,7 +223,7 @@ function App() {
     try {
       await sendMessageStream({
         message: cleaned,
-        sessionId: activeSessionId, // null if none active → backend creates one
+        sessionId: activeSessionId,
         history: chatHistory,
         signal: abortController.signal,
         onDelta: (delta) => {
@@ -187,16 +237,13 @@ function App() {
         },
       });
 
-      // Update sidebar without touching messages
       const updatedSessions = await listSessions();
       setSessions(updatedSessions);
 
-      // If we created a new session, track its id
       if (!activeSessionId && updatedSessions.length > 0) {
         setActiveSessionId(updatedSessions[0].id);
       }
 
-      // If response is empty, show fallback
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === assistantMessageId && !msg.content.trim()
@@ -231,6 +278,10 @@ function App() {
   };
 
   const toggleSidebar = () => setSidebarOpen((prev) => !prev);
+
+  if (screen === "auth") {
+    return <AuthScreen onAuthSuccess={handleAuthSuccess} />;
+  }
 
   return (
     <div className="app-layout">
@@ -283,6 +334,23 @@ function App() {
                 </div>
               </div>
             ))
+          )}
+        </div>
+
+        {/* User avatar + logout */}
+        <div className="sidebar-footer user-menu-area">
+          <button className="user-avatar-btn" onClick={() => setShowUserMenu(!showUserMenu)}>
+            <span className="user-avatar">{userAvatarLetter()}</span>
+            <span className="user-name">{user?.first_name || user?.email}</span>
+          </button>
+          {showUserMenu && (
+            <div className="user-menu">
+              <div className="user-menu-header">
+                <span className="user-menu-name">{user?.first_name} {user?.last_name}</span>
+                <span className="user-menu-email">{user?.email}</span>
+              </div>
+              <button className="user-menu-logout" onClick={handleLogout}>Sair</button>
+            </div>
           )}
         </div>
       </aside>
