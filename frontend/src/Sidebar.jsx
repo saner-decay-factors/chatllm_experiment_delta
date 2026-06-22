@@ -1,6 +1,6 @@
 const { useEffect, useRef } = React;
 
-function Sidebar({ sessions, activeSessionId, onSelect, onNew, onDelete }) {
+function Sidebar({ sessions, activeSessionId, onSelect, onNew, onDelete, user, onLogout }) {
   const activeRef = useRef(null);
 
   useEffect(() => {
@@ -13,6 +13,7 @@ function Sidebar({ sessions, activeSessionId, onSelect, onNew, onDelete }) {
     <aside className="sidebar">
       <div className="sidebar-header">
         <span className="sidebar-brand">ChatLLM Lab</span>
+        {user && <span className="sidebar-user-email">{user.email}</span>}
       </div>
 
       <button className="sidebar-new-btn" onClick={onNew}>
@@ -50,6 +51,14 @@ function Sidebar({ sessions, activeSessionId, onSelect, onNew, onDelete }) {
           </div>
         ))}
       </nav>
+
+      {user && (
+        <div className="sidebar-footer">
+          <button className="sidebar-logout-btn" onClick={onLogout}>
+            Sair
+          </button>
+        </div>
+      )}
     </aside>
   );
 }

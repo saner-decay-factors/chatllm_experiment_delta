@@ -1,10 +1,9 @@
-const { useEffect, useMemo, useRef, useState, useCallback } = React;
+const { useEffect, useMemo, useRef, useState } = React;
 
 function createMessageId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-// Função auxiliar (function declaration = hoisted) para carregar mensagens de uma sessão
 async function loadSessionMessages(sessionId, sessionsList, setMessagesFn, setActiveFn) {
   try {
     const msgs = await fetchSessionMessages(sessionId);
@@ -26,6 +25,12 @@ async function loadSessionMessages(sessionId, sessionsList, setMessagesFn, setAc
 }
 
 function App() {
+  // Auth state
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authPage, setAuthPage] = useState("login"); // "login" | "register"
+
+  // Chat state
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -35,19 +40,31 @@ function App() {
   const [loading, setLoading] = useState(true);
   const messagesRef = useRef(null);
   const abortControllerRef = useRef(null);
-  const pendingStreamSessionRef = useRef(null);
 
-  // Carregar sessoes ao montar
+  // Check auth on mount
   useEffect(() => {
+    (async () => {
+      try {
+        const u = await checkAuth();
+        setUser(u);
+      } catch {} finally {
+        setAuthLoading(false);
+      }
+    })();
+  }, []);
+
+  // Load sessions when user changes
+  useEffect(() => {
+    if (authLoading) return;
+    setLoading(true);
+    setError("");
     (async () => {
       try {
         const list = await fetchSessions();
         setSessions(list);
         if (list.length > 0) {
-          // Carregar a primeira sessao
           await loadSessionMessages(list[0].id, list, setMessages, setActiveSessionId);
         } else {
-          // Criar primeira sessao automaticamente
           const session = await createSession();
           setSessions([session]);
           setActiveSessionId(session.id);
@@ -65,7 +82,7 @@ function App() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [user, authLoading]);
 
   const chatHistory = useMemo(
     () => messages.filter((msg) => msg.role === "user" || msg.role === "assistant"),
@@ -157,7 +174,6 @@ function App() {
       setBusy(false);
     }
 
-    // Recarregar lista de sessoes apos enviar (para pegar titulo atualizado)
     try {
       const list = await fetchSessions();
       setSessions(list);
@@ -228,11 +244,68 @@ function App() {
     }
   };
 
+  const handleLoginSuccess = (userData) => {
+    setUser(userData);
+    setError("");
+  };
+
+  const handleRegisterSuccess = (userData) => {
+    setUser(userData);
+    setError("");
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+      setUser(null);
+      setSessions([]);
+      setMessages([]);
+      setActiveSessionId(null);
+      setError("");
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  // ---- Auth pages ----
+  if (authLoading) {
+    return <main className="app-shell"><div className="loading">Carregando...</div></main>;
+  }
+
+  if (!user) {
+    if (authPage === "register") {
+      return (
+        <RegisterPage
+          onRegisterSuccess={handleRegisterSuccess}
+          onGoToLogin={() => setAuthPage("login")}
+        />
+      );
+    }
+    return (
+      <LoginPage
+        onLoginSuccess={handleLoginSuccess}
+        onGoToRegister={() => setAuthPage("register")}
+      />
+    );
+  }
+
+  // ---- Main app ----
   if (loading) {
     return (
-      <main className="app-shell">
-        <div className="loading">Carregando...</div>
-      </main>
+      <div className="app-layout">
+        <Sidebar
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          onSelect={() => {}}
+          onNew={() => {}}
+          onDelete={() => {}}
+          user={user}
+          onLogout={handleLogout}
+        />
+        <main className="app-main">
+          <div className="loading">Carregando...</div>
+        </main>
+      </div>
     );
   }
 
@@ -244,6 +317,8 @@ function App() {
         onSelect={handleSelectSession}
         onNew={handleNewSession}
         onDelete={handleDeleteSession}
+        user={user}
+        onLogout={handleLogout}
       />
 
       <main className="app-main">
