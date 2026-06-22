@@ -108,3 +108,42 @@ async def stream_reply(*, user_message: str, history: list[dict], model: str | N
                 delta = parsed.get("choices", [{}])[0].get("delta", {}).get("content")
                 if isinstance(delta, str) and delta:
                     yield delta
+
+
+_TITLE_SYSTEM_PROMPT = (
+    "You are a title generator. Based on the conversation below, generate a very short title "
+    "(maximum 6 words) that summarizes the topic. Reply with ONLY the title, no quotes, no punctuation."
+)
+
+
+async def generate_title(*, user_message: str, reply: str, model: str | None = None) -> str:
+    """Gera um titulo curto para a sessao baseado na conversa."""
+    if not OPENROUTER_API_KEY:
+        return "Nova conversa"
+
+    resolved_model = model or OPENROUTER_MODEL_DEFAULT
+    messages = [
+        {"role": "system", "content": _TITLE_SYSTEM_PROMPT},
+        {"role": "user", "content": user_message},
+        {"role": "assistant", "content": reply},
+    ]
+
+    payload = {
+        "model": resolved_model,
+        "messages": messages,
+        "max_tokens": 20,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(OPENROUTER_API_URL, json=payload, headers=_build_headers())
+
+        if response.status_code >= 400:
+            return "Nova conversa"
+
+        data = response.json()
+        content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        title = content.strip().strip('"').strip("'")
+        return title[:255] if title else "Nova conversa"
+    except Exception:
+        return "Nova conversa"

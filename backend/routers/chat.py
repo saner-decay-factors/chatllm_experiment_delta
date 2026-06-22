@@ -8,9 +8,14 @@ from sqlalchemy.orm import Session
 
 from backend.config import OPENROUTER_MODEL_DEFAULT
 from backend.database import get_db
-from backend.models import ChatMessage
+from backend.models import ChatMessage, ChatSession
 from backend.schemas.chat import ChatRequest, ChatResponse
-from backend.services.openrouter import OpenRouterConfigError, generate_reply, stream_reply
+from backend.services.openrouter import (
+    OpenRouterConfigError,
+    generate_reply,
+    generate_title,
+    stream_reply,
+)
 
 
 router = APIRouter()
@@ -19,6 +24,34 @@ router = APIRouter()
 @router.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
+
+def _resolve_session(db: Session, session_id: int | None) -> ChatSession:
+    """Retorna a sessao existente ou cria uma nova."""
+    if session_id is not None:
+        session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+        if session:
+            return session
+    session = ChatSession()
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+async def _maybe_set_title(db: Session, session_id: int, user_message: str, reply: str, model: str | None) -> str | None:
+    """Gera titulo automatico se a sessao ainda nao tiver um. Retorna o titulo ou None."""
+    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+    if not session or session.title is not None:
+        return None
+    try:
+        title = await generate_title(user_message=user_message, reply=reply, model=model)
+    except Exception:
+        title = "Nova conversa"
+    session.title = title
+    db.commit()
+    db.refresh(session)
+    return session.title
 
 
 @router.post("/api/chat", response_model=ChatResponse)
@@ -36,10 +69,13 @@ async def chat(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatRespo
 
     resolved_model = payload.model or model_name or OPENROUTER_MODEL_DEFAULT
 
-    # Persistimos apenas o fluxo basico de mensagens; sessoes e titulos sao tarefa do participante.
-    db.add(ChatMessage(session_key="default", role="user", content=payload.message, model=resolved_model))
-    db.add(ChatMessage(session_key="default", role="assistant", content=reply, model=resolved_model))
+    session = _resolve_session(db, payload.session_id)
+
+    db.add(ChatMessage(session_id=session.id, role="user", content=payload.message, model=resolved_model))
+    db.add(ChatMessage(session_id=session.id, role="assistant", content=reply, model=resolved_model))
     db.commit()
+
+    await _maybe_set_title(db, session.id, payload.message, reply, resolved_model)
 
     return ChatResponse(reply=reply, model=resolved_model)
 
@@ -47,6 +83,7 @@ async def chat(payload: ChatRequest, db: Session = Depends(get_db)) -> ChatRespo
 @router.post("/api/chat/stream")
 async def chat_stream(payload: ChatRequest, db: Session = Depends(get_db)) -> StreamingResponse:
     resolved_model = payload.model or OPENROUTER_MODEL_DEFAULT
+    session = _resolve_session(db, payload.session_id)
 
     async def event_generator():
         full_reply = ""
@@ -68,7 +105,7 @@ async def chat_stream(payload: ChatRequest, db: Session = Depends(get_db)) -> St
         if full_reply.strip():
             db.add(
                 ChatMessage(
-                    session_key="default",
+                    session_id=session.id,
                     role="user",
                     content=payload.message,
                     model=resolved_model,
@@ -76,15 +113,16 @@ async def chat_stream(payload: ChatRequest, db: Session = Depends(get_db)) -> St
             )
             db.add(
                 ChatMessage(
-                    session_key="default",
+                    session_id=session.id,
                     role="assistant",
                     content=full_reply,
                     model=resolved_model,
                 )
             )
             db.commit()
+            title = await _maybe_set_title(db, session.id, payload.message, full_reply, resolved_model)
 
-        yield f"data: {json.dumps({'done': True}, ensure_ascii=True)}\n\n"
+        yield f"data: {json.dumps({'done': True, 'session_id': session.id, 'title': title or session.title}, ensure_ascii=True)}\n\n"
 
     return StreamingResponse(
         event_generator(),
